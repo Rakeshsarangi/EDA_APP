@@ -27,7 +27,7 @@ class OllamaClient:
         Sample Data (first 5 rows):
         {sample_data}
         
-        Based on this data, generate Python code for 5-7 different insightful visualizations that would best represent this data.
+        Based on this data, generate Python code for 8-10 different insightful visualizations that would best represent this data.
         
         IMPORTANT REQUIREMENTS:
         1. Use only plotly.graph_objects (go) or plotly.express (px) for visualizations
