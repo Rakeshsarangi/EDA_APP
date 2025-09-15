@@ -27,18 +27,31 @@ class DataLoader:
             if file_ext == '.csv':
                 encodings_to_try = ["utf-8", "utf-8-sig", "latin1", "cp1252"]
                 last_error = None
+                df = None
 
                 for enc in encodings_to_try:
                     try:
-                        df= pd.read_csv(uploaded_file, encoding=enc)
+                        # Reset file pointer to beginning for each attempt
+                        uploaded_file.seek(0)
+                        df = pd.read_csv(uploaded_file, encoding=enc)
+                        break  # Success! Exit the loop
                     except UnicodeDecodeError as e:
                         last_error = e
                         continue
+                    except Exception as e:
+                        # Handle other potential errors (empty file, etc.)
+                        last_error = e
+                        continue
 
-                raise ValueError(
-                    f"CSV file encoding not supported. Tried: {encodings_to_try}. "
-                    f"Last error: {last_error}"
-                )
+                # Only raise error if we couldn't load with any encoding
+                if df is None:
+                    if last_error:
+                        raise ValueError(
+                            f"CSV file could not be loaded. Tried encodings: {encodings_to_try}. "
+                            f"Last error: {last_error}"
+                        )
+                    else:
+                        raise ValueError("CSV file is empty or has no valid data")
             elif file_ext in ['.xlsx', '.xls']:
                 df = pd.read_excel(uploaded_file)
             elif file_ext == '.json':
