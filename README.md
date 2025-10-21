@@ -88,7 +88,7 @@ graph TB
 ## 📦 Prerequisites
 
 ### System Requirements
-- **Python:** 3.8 or higher
+- **Python:** 3.11.9
 - **RAM:** Minimum 8GB (16GB recommended for large datasets)
 - **Storage:** 10GB free space for models
 - **OS:** Windows, macOS, or Linux
@@ -142,7 +142,7 @@ ollama pull llama2:13b
 ```cmd
 ollama serve
 # In a new terminal:
-ollama pull llama2:13b
+ollama pull gpt-oss:20b (You can change the models also)
 ```
 
 #### On Linux:
@@ -162,7 +162,7 @@ Create a `.env` file in the project root:
 
 ```bash
 # .env file
-OLLAMA_MODEL=llama2:13b
+OLLAMA_MODEL=gpt-oss:20b
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
@@ -181,7 +181,7 @@ streamlit run app.py
 
 | Variable | Description | Default | Options |
 |----------|-------------|---------|---------|
-| `OLLAMA_MODEL` | LLM model to use | `llama2:13b` | `llama2:7b`, `llama2:13b`, `mistral:7b`, `mixtral:8x7b` |
+| `OLLAMA_MODEL` | LLM model to use | `gpt-oss:20b` | `llama2:7b`, `llama2:13b`, `mistral:7b`, `mixtral:8x7b` |
 | `OLLAMA_BASE_URL` | Ollama API endpoint | `http://localhost:11434` | Any valid URL |
 
 ### Recommended Models
