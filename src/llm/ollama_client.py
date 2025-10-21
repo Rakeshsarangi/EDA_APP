@@ -2,9 +2,13 @@ import ollama
 from langchain_community.llms import Ollama
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 import json
+import pandas as pd
+import numpy as np
 from config.settings import settings
+import traceback
+import re
 
 class OllamaClient:
     def __init__(self):
@@ -15,6 +19,315 @@ class OllamaClient:
             temperature=0.1
         )
     
+    def generate_analysis_code_for_question(self, question: str, data_context: Dict) -> str:
+        """Generate Python code to answer the data question."""
+        
+        prompt_template = """
+        You are a data analysis expert. Generate Python code to answer the following question about a dataset.
+        
+        Dataset Information:
+        - Columns: {columns}
+        - Data Types: {dtypes}
+        - Shape: {shape} 
+        - Numeric Columns: {numeric_columns}
+        - Categorical Columns: {categorical_columns}
+        
+        Question: {question}
+        
+        Generate Python code that:
+        1. Takes a DataFrame 'df' as input
+        2. Performs the necessary analysis to answer the question
+        3. Returns a dictionary with 'answer' (string) and optionally 'data' (for tables/lists)
+        4. Handles potential errors gracefully
+        5. Provides clear, formatted output
+        
+        The code should follow this structure:
+        ```python
+        def analyze(df):
+            try:
+                # Your analysis code here
+                # Compute the answer
+                
+                result = {{
+                    'answer': 'Clear text answer to the question',
+                    'data': None  # Optional: DataFrame, list, or dict for tabular results
+                }}
+                return result
+            except Exception as e:
+                return {{'answer': f'Error: {{str(e)}}', 'data': None}}
+        ```
+        
+        Examples of good answers:
+        - For "which customer has highest sales": {{'answer': 'Customer ABC has the highest sales with $123,456', 'data': top_5_customers_df}}
+        - For "what is the average": {{'answer': 'The average value is 45.2', 'data': None}}
+        - For "show me top 5": {{'answer': 'Here are the top 5 items:', 'data': top_5_df}}
+        
+        Return ONLY the function code, no explanations.
+        """
+        
+        prompt = PromptTemplate(
+            input_variables=["columns", "dtypes", "shape", "numeric_columns", 
+                           "categorical_columns", "question"],
+            template=prompt_template
+        )
+        
+        chain = LLMChain(llm=self.llm, prompt=prompt)
+        
+        try:
+            columns = data_context.get('columns', [])
+            dtypes = data_context.get('dtypes', {})
+            shape = data_context.get('shape', (0, 0))
+            numeric_cols = data_context.get('numeric_columns', [])
+            categorical_cols = data_context.get('categorical_columns', [])
+            
+            code = chain.run(
+                columns=", ".join(columns) if columns else "No columns",
+                dtypes=json.dumps(dtypes, indent=2) if dtypes else "{}",
+                shape=f"{shape[0]} rows × {shape[1]} columns",
+                numeric_columns=", ".join(numeric_cols) if numeric_cols else "None",
+                categorical_columns=", ".join(categorical_cols) if categorical_cols else "None",
+                question=question
+            )
+            
+            return code.strip()
+            
+        except Exception as e:
+            print(f"Error generating analysis code: {e}")
+            # Return a fallback function
+            return """
+def analyze(df):
+    return {
+        'answer': 'Unable to generate analysis code. Please try rephrasing your question.',
+        'data': None
+    }
+"""
+    
+    def execute_analysis_code(self, code: str, df: pd.DataFrame) -> Dict[str, Any]:
+        """Safely execute the generated analysis code."""
+        
+        # Create a safe namespace for execution
+        namespace = {
+            'pd': pd,
+            'np': np,
+            'df': df,
+            'len': len,
+            'str': str,
+            'int': int,
+            'float': float,
+            'round': round,
+            'sum': sum,
+            'min': min,
+            'max': max,
+            'list': list,
+            'dict': dict,
+            'set': set,
+            'sorted': sorted,
+            'enumerate': enumerate,
+            'zip': zip,
+            'range': range,
+            'abs': abs,
+            'Exception': Exception,
+            'ValueError': ValueError,
+            'KeyError': KeyError,
+            'TypeError': TypeError,
+        }
+        
+        try:
+            # Clean the code
+            code = code.strip()
+            if code.startswith("```python"):
+                code = code[9:]
+            if code.startswith("```"):
+                code = code[3:]
+            if code.endswith("```"):
+                code = code[:-3]
+            
+            # Execute the code
+            exec(code, namespace)
+            
+            # Check if the analyze function exists
+            if 'analyze' not in namespace:
+                return {
+                    'answer': 'Error: Analysis function not found in generated code.',
+                    'data': None
+                }
+            
+            # Call the analyze function
+            result = namespace['analyze'](df)
+            
+            # Validate result format
+            if not isinstance(result, dict):
+                return {
+                    'answer': 'Error: Analysis did not return expected format.',
+                    'data': None
+                }
+            
+            # Ensure required keys exist
+            if 'answer' not in result:
+                result['answer'] = 'Analysis completed but no answer text was provided.'
+            if 'data' not in result:
+                result['data'] = None
+                
+            return result
+            
+        except Exception as e:
+            return {
+                'answer': f'Error executing analysis: {str(e)}\n{traceback.format_exc()}',
+                'data': None
+            }
+    
+    def answer_data_question_with_execution(self, question: str, df: pd.DataFrame, data_context: Dict) -> Tuple[str, Any]:
+        """Answer question by generating and executing analysis code."""
+        
+        # First, generate the analysis code
+        code = self.generate_analysis_code_for_question(question, data_context)
+        
+        # Execute the code
+        result = self.execute_analysis_code(code, df)
+        
+        # Format the answer
+        answer_text = result.get('answer', 'Unable to compute answer.')
+        data_result = result.get('data', None)
+        
+        # If there's tabular data, format it nicely
+        if data_result is not None:
+            if isinstance(data_result, pd.DataFrame):
+                if len(data_result) > 0:
+                    answer_text += f"\n\n📊 **Results Table** ({len(data_result)} rows):"
+            elif isinstance(data_result, dict):
+                answer_text += "\n\n📊 **Results:**"
+            elif isinstance(data_result, list):
+                answer_text += f"\n\n📊 **Results** ({len(data_result)} items):"
+        
+        return answer_text, data_result, code
+    
+    def refine_user_question(self, question: str, data_context: Dict) -> str:
+        """Refine user question to be more specific and contextual."""
+        
+        prompt_template = """
+        You are a data analysis assistant. A user has asked a question about their dataset. 
+        Your task is to rewrite their question to be more specific and clear in the context of the actual data.
+        
+        Dataset Information:
+        - Columns: {columns}
+        - Data Types: {dtypes}
+        - Shape: {shape}
+        - Numeric Columns: {numeric_columns}
+        - Categorical Columns: {categorical_columns}
+        - Date Columns: {date_columns}
+        
+        Original User Question: {question}
+        
+        Rewrite the question to be:
+        1. More specific to the actual columns and data available
+        2. Clearer in intent and expected output
+        3. Technically precise while maintaining the user's original intent
+        4. Include relevant column names where applicable
+        
+        Rules:
+        - If the user mentions generic terms like "sales", "revenue", "customers", map them to actual column names if identifiable
+        - If asking for analysis, specify what type (statistical, trend, comparison, etc.)
+        - If the question is vague, make reasonable assumptions based on available data
+        - Keep the refined question concise but complete
+        - Don't change the fundamental intent of the question
+        
+        Return ONLY the refined question, no explanations or additional text.
+        """
+        
+        prompt = PromptTemplate(
+            input_variables=["columns", "dtypes", "shape", "numeric_columns", 
+                           "categorical_columns", "date_columns", "question"],
+            template=prompt_template
+        )
+        
+        chain = LLMChain(llm=self.llm, prompt=prompt)
+        
+        try:
+            # Prepare context
+            columns = data_context.get('columns', [])
+            dtypes = data_context.get('dtypes', {})
+            shape = data_context.get('shape', (0, 0))
+            numeric_cols = data_context.get('numeric_columns', [])
+            categorical_cols = data_context.get('categorical_columns', [])
+            date_cols = data_context.get('datetime_columns', [])
+            
+            refined_question = chain.run(
+                columns=", ".join(columns) if columns else "No columns",
+                dtypes=json.dumps(dtypes, indent=2) if dtypes else "{}",
+                shape=f"{shape[0]} rows × {shape[1]} columns",
+                numeric_columns=", ".join(numeric_cols) if numeric_cols else "None",
+                categorical_columns=", ".join(categorical_cols) if categorical_cols else "None",
+                date_columns=", ".join(date_cols) if date_cols else "None",
+                question=question
+            )
+            
+            return refined_question.strip()
+            
+        except Exception as e:
+            print(f"Error refining question: {e}")
+            # Return original question if refinement fails
+            return question
+    
+    def suggest_related_questions(self, question: str, data_context: Dict) -> List[str]:
+        """Suggest related questions based on the user's input and data context."""
+        
+        prompt_template = """
+        Based on a user's question about their dataset, suggest 3 related follow-up questions they might want to ask.
+        
+        Dataset Information:
+        - Columns: {columns}
+        - Numeric Columns: {numeric_columns}
+        - Categorical Columns: {categorical_columns}
+        
+        User's Question: {question}
+        
+        Generate 3 specific, relevant follow-up questions that:
+        1. Explore different aspects of the same topic
+        2. Use actual column names from the dataset
+        3. Would provide valuable insights
+        
+        Return as a JSON array of strings. Example:
+        ["Question 1", "Question 2", "Question 3"]
+        
+        Return ONLY the JSON array, no additional text.
+        """
+        
+        prompt = PromptTemplate(
+            input_variables=["columns", "numeric_columns", "categorical_columns", "question"],
+            template=prompt_template
+        )
+        
+        chain = LLMChain(llm=self.llm, prompt=prompt)
+        
+        try:
+            columns = data_context.get('columns', [])
+            numeric_cols = data_context.get('numeric_columns', [])
+            categorical_cols = data_context.get('categorical_columns', [])
+            
+            response = chain.run(
+                columns=", ".join(columns[:20]) if columns else "No columns",
+                numeric_columns=", ".join(numeric_cols[:10]) if numeric_cols else "None",
+                categorical_columns=", ".join(categorical_cols[:10]) if categorical_cols else "None",
+                question=question
+            )
+            
+            # Clean and parse response
+            response = response.strip()
+            if response.startswith("```"):
+                response = response.split("```")[1]
+                if response.startswith("json"):
+                    response = response[4:]
+            if response.endswith("```"):
+                response = response.rsplit("```", 1)[0]
+            
+            suggestions = json.loads(response)
+            return suggestions[:3]  # Ensure we return exactly 3
+            
+        except Exception as e:
+            print(f"Error generating suggestions: {e}")
+            return []
+    
+    # Keep all other existing methods (analyze_and_generate_viz_code, etc.)
     def analyze_and_generate_viz_code(self, data_info: Dict, sample_data: str) -> List[Dict]:
         """Analyze data and generate multiple visualization codes."""
         
@@ -49,17 +362,6 @@ class OllamaClient:
             ...
         ]
         
-        Focus on creating diverse, meaningful visualizations such as:
-        - Distribution plots for numeric data
-        - Correlation matrices or networks
-        - Time series if datetime columns exist
-        - Geographic plots if location data exists
-        - Categorical comparisons
-        - Outlier detection plots
-        - Trend analysis
-        - Statistical summaries
-        - Interactive 3D plots if appropriate
-        
         RESPOND ONLY WITH VALID JSON. No additional text or markdown.
         """
         
@@ -78,7 +380,6 @@ class OllamaClient:
             
             # Clean the response
             response = response.strip()
-            # Remove markdown code blocks if present
             if response.startswith("```"):
                 response = response.split("```")[1]
                 if response.startswith("json"):
@@ -86,24 +387,17 @@ class OllamaClient:
             if response.endswith("```"):
                 response = response.rsplit("```", 1)[0]
             
-            # Parse JSON
             visualizations = json.loads(response)
             
-            # Validate and clean the visualizations
             valid_visualizations = []
             for viz in visualizations:
                 if all(key in viz for key in ["title", "description", "code"]):
-                    # Ensure the code is properly formatted
                     if not viz["code"].startswith("def "):
                         viz["code"] = f"def create_viz(df):\n{viz['code']}"
                     valid_visualizations.append(viz)
             
             return valid_visualizations
             
-        except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-            print(f"Response was: {response[:500] if 'response' in locals() else 'No response'}...")
-            return self._get_fallback_visualizations()
         except Exception as e:
             print(f"Error generating visualizations: {e}")
             return self._get_fallback_visualizations()
@@ -138,63 +432,6 @@ class OllamaClient:
     fig.update_layout(title="Distribution Overview", height=600)
     return fig""",
                 "priority": 1
-            },
-            {
-                "title": "Correlation Heatmap",
-                "description": "Correlation matrix of numeric columns",
-                "code": """def create_viz(df):
-    import plotly.graph_objects as go
-    import pandas as pd
-    
-    numeric_df = df.select_dtypes(include=['float64', 'int64'])
-    if numeric_df.shape[1] < 2:
-        fig = go.Figure()
-        fig.add_annotation(text="Not enough numeric columns for correlation", x=0.5, y=0.5)
-        return fig
-    
-    corr = numeric_df.corr()
-    
-    fig = go.Figure(data=go.Heatmap(
-        z=corr.values,
-        x=corr.columns,
-        y=corr.columns,
-        colorscale='RdBu',
-        zmid=0
-    ))
-    
-    fig.update_layout(title="Correlation Matrix", height=600)
-    return fig""",
-                "priority": 2
-            },
-            {
-                "title": "Top Categories Bar Chart",
-                "description": "Most frequent values in categorical columns",
-                "code": """def create_viz(df):
-    import plotly.graph_objects as go
-    import pandas as pd
-    
-    cat_cols = df.select_dtypes(include=['object']).columns
-    if len(cat_cols) == 0:
-        fig = go.Figure()
-        fig.add_annotation(text="No categorical columns found", x=0.5, y=0.5)
-        return fig
-    
-    # Use first categorical column
-    col = cat_cols[0]
-    value_counts = df[col].value_counts().head(10)
-    
-    fig = go.Figure(data=[
-        go.Bar(x=value_counts.index, y=value_counts.values)
-    ])
-    
-    fig.update_layout(
-        title=f"Top 10 Categories in {col}",
-        xaxis_title=col,
-        yaxis_title="Count",
-        height=500
-    )
-    return fig""",
-                "priority": 3
             }
         ]
     
@@ -202,22 +439,12 @@ class OllamaClient:
         """Refine visualization code if it encounters an error."""
         
         prompt_template = """
-        The following visualization code encountered an error. Please fix it.
+        Fix the following visualization code error:
         
-        Original Code:
-        {code}
+        Code: {code}
+        Error: {error_message}
         
-        Error Message:
-        {error_message}
-        
-        Please provide the corrected code that:
-        1. Fixes the error
-        2. Uses only plotly (go or px) for visualization
-        3. Accepts a DataFrame 'df' as parameter
-        4. Returns a plotly figure
-        5. Includes proper error handling
-        
-        Return ONLY the corrected function code, no explanations.
+        Return ONLY the corrected function code.
         """
         
         prompt = PromptTemplate(
@@ -237,21 +464,17 @@ class OllamaClient:
     def generate_eda_insights(self, data_summary: Dict) -> str:
         """Generate insights from EDA results."""
         prompt_template = """
-        You are a data analyst expert. Based on the following data analysis results, 
-        provide key insights and recommendations.
+        Provide key insights based on this data analysis:
         
-        Data Summary:
         {data_summary}
         
-        Please provide:
-        1. Key findings from the data
-        2. Potential data quality issues
-        3. Interesting patterns or correlations
-        4. Recommendations for further analysis
+        Include:
+        1. Key findings
+        2. Data quality issues
+        3. Patterns or correlations
+        4. Recommendations
         
-        Keep your response concise and actionable.
-        
-        Insights:
+        Be concise and actionable.
         """
         
         prompt = PromptTemplate(
@@ -262,58 +485,22 @@ class OllamaClient:
         chain = LLMChain(llm=self.llm, prompt=prompt)
         
         try:
-            # Convert data summary to string
             summary_str = json.dumps(data_summary, indent=2, default=str)
             response = chain.run(data_summary=summary_str)
             return response
         except Exception as e:
             return f"Error generating insights: {str(e)}"
     
-    def answer_data_question(self, question: str, data_context: Dict) -> str:
-        """Answer questions about the data."""
-        prompt_template = """
-        You are a data analyst assistant. Answer the following question based on the data context provided.
-        
-        Data Context:
-        {data_context}
-        
-        Question: {question}
-        
-        Provide a clear, concise answer based on the data. If the answer cannot be determined from 
-        the given context, explain what additional analysis would be needed.
-        
-        Answer:
-        """
-        
-        prompt = PromptTemplate(
-            input_variables=["data_context", "question"],
-            template=prompt_template
-        )
-        
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        
-        try:
-            context_str = json.dumps(data_context, indent=2, default=str)
-            response = chain.run(data_context=context_str, question=question)
-            return response
-        except Exception as e:
-            return f"Error answering question: {str(e)}"
-    
     def suggest_analysis_code(self, data_info: Dict, analysis_type: str) -> str:
         """Generate Python code for specific analysis."""
         prompt_template = """
-        Generate Python code for {analysis_type} analysis based on the following data information:
+        Generate Python code for {analysis_type} analysis:
         
-        Data Info:
-        {data_info}
+        Data Info: {data_info}
         
-        Requirements:
-        1. Use pandas, numpy, and plotly for analysis and visualization
-        2. Include proper error handling
-        3. Add comments explaining each step
-        4. Make the code production-ready
+        Use pandas, numpy, and plotly. Include error handling and comments.
         
-        Generate only the Python code without any explanations:
+        Return only Python code:
         """
         
         prompt = PromptTemplate(

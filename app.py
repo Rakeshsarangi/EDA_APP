@@ -124,6 +124,9 @@ def main():
                         st.write("Top 5 values:")
                         st.write(stats['top_5'])
         
+        # This is the updated visualization tab section for app.py
+        # Replace the existing Tab 2: Visualizations section with this code
+
         # Tab 2: Visualizations
         with tab2:
             st.header("AI-Powered Data Visualizations")
@@ -204,9 +207,6 @@ def main():
                     for idx, result in enumerate(results):
                         st.markdown(f"### {idx+1}. {result['title']}")
                         
-                        if result['description']:
-                            st.markdown(f"*{result['description']}*")
-                        
                         if result['success'] and result['figure']:
                             # Enhance and display the figure
                             enhanced_fig = VisualizationOptimizer.enhance_figure(
@@ -214,6 +214,17 @@ def main():
                                 result['title']
                             )
                             st.plotly_chart(enhanced_fig, use_container_width=True)
+                            
+                            # Display description and use case in an organized way
+                            with st.container():
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.markdown("#### 📖 Description")
+                                    if result['description']:
+                                        st.info(result['description'])
+                                with col2:
+                                    st.markdown("#### 💡 Use Case")
+                                    st.success("This visualization helps identify patterns, trends, and insights specific to your data. Use it to explore relationships and make data-driven decisions.")
                             
                             # Show code in expander
                             with st.expander("View Generated Code"):
@@ -256,7 +267,7 @@ def main():
                             del st.session_state.viz_results
                         st.rerun()
             
-            # Standard Analysis Tab (keep existing code)
+            # Standard Analysis Tab
             with viz_tab2:
                 st.subheader("Standard Statistical Visualizations")
                 
@@ -264,11 +275,24 @@ def main():
                 
                 # Missing data plot
                 st.subheader("Missing Data Analysis")
-                missing_plot = visualizer.create_missing_data_plot()
-                if missing_plot:
+                missing_plot_data = visualizer.create_missing_data_plot()
+                if missing_plot_data and missing_plot_data[0]:
+                    missing_plot, missing_info = missing_plot_data
                     st.plotly_chart(missing_plot, use_container_width=True)
+                    
+                    # Display description and use case
+                    with st.container():
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("#### 📖 Description")
+                            st.info(missing_info['description'])
+                        with col2:
+                            st.markdown("#### 💡 Use Case")
+                            st.success(missing_info['use_case'])
                 else:
                     st.info("No missing data found!")
+                
+                st.divider()
                 
                 # Distribution plots
                 if basic_stats['numeric_columns']:
@@ -276,20 +300,87 @@ def main():
                     dist_plots = visualizer.create_distribution_plots(basic_stats['numeric_columns'])
                     
                     # Create columns for plots
-                    cols = st.columns(2)
-                    for idx, (col_name, fig) in enumerate(dist_plots.items()):
-                        with cols[idx % 2]:
-                            st.plotly_chart(fig, use_container_width=True)
+                    for idx, (col_name, plot_data) in enumerate(dist_plots.items()):
+                        fig, info = plot_data
+                        
+                        # Display the plot
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Display description and use case
+                        with st.container():
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("#### 📖 Description")
+                                st.info(info['description'])
+                            with col2:
+                                st.markdown("#### 💡 Use Case")
+                                st.success(info['use_case'])
+                        
+                        st.divider()
                 
                 # Correlation heatmap
                 if len(basic_stats['numeric_columns']) > 1:
                     st.subheader("Correlation Analysis")
                     corr_matrix = analyzer.get_correlation_matrix()
-                    corr_plot = visualizer.create_correlation_heatmap(corr_matrix)
-                    if corr_plot:
+                    corr_plot_data = visualizer.create_correlation_heatmap(corr_matrix)
+                    if corr_plot_data and corr_plot_data[0]:
+                        corr_plot, corr_info = corr_plot_data
                         st.plotly_chart(corr_plot, use_container_width=True)
+                        
+                        # Display description and use case
+                        with st.container():
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("#### 📖 Description")
+                                st.info(corr_info['description'])
+                            with col2:
+                                st.markdown("#### 💡 Use Case")
+                                st.success(corr_info['use_case'])
+                
+                st.divider()
+                
+                # Categorical plots
+                if basic_stats['categorical_columns']:
+                    st.subheader("Categorical Variable Analysis")
+                    cat_plots = visualizer.create_categorical_plots(basic_stats['categorical_columns'])
+                    
+                    for col_name, plot_data in cat_plots.items():
+                        fig, info = plot_data
+                        
+                        # Display the plot
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Display description and use case
+                        with st.container():
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("#### 📖 Description")
+                                st.info(info['description'])
+                            with col2:
+                                st.markdown("#### 💡 Use Case")
+                                st.success(info['use_case'])
+                        
+                        st.divider()
+                
+                # Scatter matrix
+                if len(basic_stats['numeric_columns']) > 1:
+                    st.subheader("Multivariate Analysis")
+                    scatter_matrix_data = visualizer.create_scatter_matrix(basic_stats['numeric_columns'])
+                    if scatter_matrix_data and scatter_matrix_data[0]:
+                        scatter_fig, scatter_info = scatter_matrix_data
+                        st.plotly_chart(scatter_fig, use_container_width=True)
+                        
+                        # Display description and use case
+                        with st.container():
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("#### 📖 Description")
+                                st.info(scatter_info['description'])
+                            with col2:
+                                st.markdown("#### 💡 Use Case")
+                                st.success(scatter_info['use_case'])
             
-            # Generated Code Tab
+            # Generated Code Tab (keep existing implementation)
             with viz_tab3:
                 st.subheader("All Generated Visualization Codes")
                 
@@ -338,7 +429,6 @@ def main():
                             )
                 else:
                     st.warning("No visualizations generated yet. Go to 'AI-Generated Visualizations' tab and click 'Generate Visualizations'")
-        
         # Tab 3: AI Insights
         with tab3:
             st.header("AI-Powered Insights")
@@ -363,30 +453,345 @@ def main():
                     # Store results
                     st.session_state.eda_results = data_summary
         
+        # Enhanced Q&A Tab with Actual Data Execution
+        # Replace the existing Tab 4: Q&A section with this code
+
         # Tab 4: Q&A
         with tab4:
             st.header("Ask Questions About Your Data")
+            st.markdown("Ask any question about your data. I'll analyze the entire dataset and provide accurate answers.")
             
-            question = st.text_input("Enter your question:")
+            # Initialize session state for Q&A workflow
+            if 'qa_stage' not in st.session_state:
+                st.session_state.qa_stage = 'input'  # 'input', 'refine', 'answer'
+            if 'original_question' not in st.session_state:
+                st.session_state.original_question = ""
+            if 'refined_question' not in st.session_state:
+                st.session_state.refined_question = ""
+            if 'qa_answer' not in st.session_state:
+                st.session_state.qa_answer = ""
+            if 'qa_data_result' not in st.session_state:
+                st.session_state.qa_data_result = None
+            if 'qa_code' not in st.session_state:
+                st.session_state.qa_code = ""
+            if 'suggested_questions' not in st.session_state:
+                st.session_state.suggested_questions = []
             
-            if st.button("Get Answer") and question:
-                with st.spinner("Thinking..."):
-                    # Prepare context
-                    if st.session_state.eda_results:
-                        context = st.session_state.eda_results
-                    else:
-                        context = {
-                            'columns': list(df.columns),
-                            'shape': df.shape,
-                            'dtypes': df.dtypes.astype(str).to_dict(),
-                            'sample': df.head(10).to_dict(),
-                            'describe': df.describe().to_dict() if basic_stats['numeric_columns'] else {}
-                        }
+            # Prepare data context
+            context = {
+                'columns': list(df.columns),
+                'shape': df.shape,
+                'dtypes': df.dtypes.astype(str).to_dict(),
+                'numeric_columns': list(df.select_dtypes(include=[np.number]).columns),
+                'categorical_columns': list(df.select_dtypes(include=['object', 'category']).columns),
+                'datetime_columns': list(df.select_dtypes(include=['datetime64']).columns)
+            }
+            
+            # Stage 1: Input Question
+            if st.session_state.qa_stage == 'input':
+                # Question input area
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    question = st.text_input(
+                        "Enter your question:",
+                        placeholder="e.g., Which customer has the highest total sales?",
+                        key="user_question_input"
+                    )
+                with col2:
+                    analyze_btn = st.button("🔍 Analyze Question", type="primary", disabled=not question)
+                
+                # Show example questions based on actual columns
+                with st.expander("📝 Example Questions for Your Data"):
+                    example_questions = []
                     
-                    answer = st.session_state.ollama_client.answer_data_question(question, context)
+                    # Generate examples based on actual columns
+                    if context['numeric_columns']:
+                        num_col = context['numeric_columns'][0]
+                        example_questions.append(f"What is the average {num_col}?")
+                        example_questions.append(f"Show me the top 10 records by {num_col}")
+                        if len(context['numeric_columns']) > 1:
+                            num_col2 = context['numeric_columns'][1]
+                            example_questions.append(f"What is the correlation between {num_col} and {num_col2}?")
                     
-                    st.markdown("### 📝 Answer")
-                    st.write(answer)
+                    if context['categorical_columns']:
+                        cat_col = context['categorical_columns'][0]
+                        example_questions.append(f"What are the most common values in {cat_col}?")
+                        if context['numeric_columns']:
+                            num_col = context['numeric_columns'][0]
+                            example_questions.append(f"Which {cat_col} has the highest average {num_col}?")
+                    
+                    if context['datetime_columns']:
+                        date_col = context['datetime_columns'][0]
+                        if context['numeric_columns']:
+                            num_col = context['numeric_columns'][0]
+                            example_questions.append(f"What is the trend of {num_col} over {date_col}?")
+                    
+                    # Generic examples
+                    example_questions.extend([
+                        "Which rows have missing values?",
+                        "What are the statistical outliers in the data?",
+                        "Show me a summary of the dataset"
+                    ])
+                    
+                    for eq in example_questions[:8]:
+                        st.write(f"• {eq}")
+                
+                # Show data context summary
+                with st.expander("📊 Your Dataset Overview"):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f"**Shape:** {context['shape'][0]:,} rows × {context['shape'][1]} columns")
+                        st.markdown("**Numeric Columns:**")
+                        for col in context['numeric_columns'][:5]:
+                            st.write(f"• {col}")
+                        if len(context['numeric_columns']) > 5:
+                            st.write(f"... and {len(context['numeric_columns'])-5} more")
+                    with col2:
+                        st.markdown("**Categorical Columns:**")
+                        if context['categorical_columns']:
+                            for col in context['categorical_columns'][:5]:
+                                st.write(f"• {col}")
+                            if len(context['categorical_columns']) > 5:
+                                st.write(f"... and {len(context['categorical_columns'])-5} more")
+                        else:
+                            st.write("None")
+                    with col3:
+                        st.markdown("**DateTime Columns:**")
+                        if context['datetime_columns']:
+                            for col in context['datetime_columns'][:5]:
+                                st.write(f"• {col}")
+                        else:
+                            st.write("None")
+                
+                if analyze_btn and question:
+                    st.session_state.original_question = question
+                    st.session_state.qa_stage = 'refine'
+                    st.rerun()
+            
+            # Stage 2: Refine Question
+            elif st.session_state.qa_stage == 'refine':
+                st.subheader("🔄 Question Refinement")
+                
+                # Show original question
+                st.markdown("**Your Original Question:**")
+                st.info(st.session_state.original_question)
+                
+                # Generate refined question if not already done
+                if not st.session_state.refined_question:
+                    with st.spinner("Analyzing and refining your question..."):
+                        refined = st.session_state.ollama_client.refine_user_question(
+                            st.session_state.original_question,
+                            context
+                        )
+                        st.session_state.refined_question = refined
+                        
+                        # Generate suggested questions
+                        suggestions = st.session_state.ollama_client.suggest_related_questions(
+                            st.session_state.original_question,
+                            context
+                        )
+                        st.session_state.suggested_questions = suggestions
+                
+                # Show refined question with edit capability
+                st.markdown("**Refined Question for Better Analysis:**")
+                refined_question_edit = st.text_area(
+                    "You can edit this refined question if needed:",
+                    value=st.session_state.refined_question,
+                    height=100,
+                    key="refined_question_edit"
+                )
+                
+                # Show what changed
+                if st.session_state.original_question.lower() != st.session_state.refined_question.lower():
+                    with st.expander("🔍 What was refined?"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**Original:**")
+                            st.write(st.session_state.original_question)
+                        with col2:
+                            st.markdown("**Refined:**")
+                            st.write(st.session_state.refined_question)
+                        
+                        st.info("""
+                        The question was refined to:
+                        - Include specific column names from your dataset
+                        - Clarify the type of analysis requested
+                        - Make the intent more precise for accurate computation
+                        """)
+                
+                # Action buttons
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col1:
+                    if st.button("✅ Proceed with Analysis", type="primary"):
+                        st.session_state.refined_question = refined_question_edit
+                        st.session_state.qa_stage = 'answer'
+                        st.rerun()
+                with col2:
+                    if st.button("📝 Use Original Question"):
+                        st.session_state.refined_question = st.session_state.original_question
+                        st.session_state.qa_stage = 'answer'
+                        st.rerun()
+                with col3:
+                    if st.button("🔙 Ask Different Question"):
+                        st.session_state.qa_stage = 'input'
+                        st.session_state.original_question = ""
+                        st.session_state.refined_question = ""
+                        st.session_state.suggested_questions = []
+                        st.rerun()
+                
+                # Show suggested related questions
+                if st.session_state.suggested_questions:
+                    st.markdown("---")
+                    st.markdown("### 💡 Related Questions You Might Want to Ask:")
+                    for i, suggestion in enumerate(st.session_state.suggested_questions, 1):
+                        col1, col2 = st.columns([4, 1])
+                        with col1:
+                            st.write(f"{i}. {suggestion}")
+                        with col2:
+                            if st.button(f"Ask this", key=f"suggest_{i}"):
+                                st.session_state.original_question = suggestion
+                                st.session_state.refined_question = ""
+                                st.session_state.qa_stage = 'refine'
+                                st.rerun()
+            
+            # Stage 3: Show Answer with Actual Data Analysis
+            elif st.session_state.qa_stage == 'answer':
+                # Display the question being answered
+                st.markdown("**Analyzing Question:**")
+                st.success(st.session_state.refined_question)
+                
+                # Generate answer if not already done
+                if not st.session_state.qa_answer:
+                    with st.spinner("🔬 Analyzing your entire dataset..."):
+                        # Use the new execution method
+                        answer, data_result, code = st.session_state.ollama_client.answer_data_question_with_execution(
+                            st.session_state.refined_question,
+                            df,  # Pass the actual DataFrame
+                            context
+                        )
+                        st.session_state.qa_answer = answer
+                        st.session_state.qa_data_result = data_result
+                        st.session_state.qa_code = code
+                
+                # Display answer
+                st.markdown("### 📊 Answer")
+                st.write(st.session_state.qa_answer)
+                
+                # Display data results if available
+                if st.session_state.qa_data_result is not None:
+                    st.markdown("---")
+                    if isinstance(st.session_state.qa_data_result, pd.DataFrame):
+                        st.markdown("#### 📋 Detailed Results:")
+                        # Display DataFrame with formatting
+                        st.dataframe(
+                            st.session_state.qa_data_result,
+                            use_container_width=True,
+                            hide_index=False
+                        )
+                        
+                        # Offer to download results
+                        csv = st.session_state.qa_data_result.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Results as CSV",
+                            data=csv,
+                            file_name="query_results.csv",
+                            mime="text/csv"
+                        )
+                        
+                    elif isinstance(st.session_state.qa_data_result, dict):
+                        st.markdown("#### 📋 Results:")
+                        st.json(st.session_state.qa_data_result)
+                        
+                    elif isinstance(st.session_state.qa_data_result, list):
+                        st.markdown("#### 📋 Results:")
+                        for item in st.session_state.qa_data_result:
+                            st.write(f"• {item}")
+                
+                # Show the analysis code
+                with st.expander("💻 View Analysis Code"):
+                    st.markdown("This code was generated and executed to answer your question:")
+                    st.code(st.session_state.qa_code, language='python')
+                    
+                    # Download button for code
+                    st.download_button(
+                        label="📥 Download Analysis Code",
+                        data=st.session_state.qa_code,
+                        file_name="data_analysis.py",
+                        mime="text/plain"
+                    )
+                
+                # Feedback and actions
+                st.markdown("---")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    if st.button("👍 Helpful"):
+                        st.success("Great! Feel free to ask more questions.")
+                with col2:
+                    if st.button("👎 Not Helpful"):
+                        st.info("Try rephrasing your question or be more specific about what you're looking for.")
+                with col3:
+                    if st.button("🔄 Refine Question"):
+                        st.session_state.qa_stage = 'refine'
+                        st.rerun()
+                with col4:
+                    if st.button("❓ New Question"):
+                        # Reset state
+                        st.session_state.qa_stage = 'input'
+                        st.session_state.original_question = ""
+                        st.session_state.refined_question = ""
+                        st.session_state.qa_answer = ""
+                        st.session_state.qa_data_result = None
+                        st.session_state.qa_code = ""
+                        st.session_state.suggested_questions = []
+                        st.rerun()
+                
+                # Show related questions for follow-up
+                if st.session_state.suggested_questions:
+                    st.markdown("---")
+                    st.markdown("### 🔗 Follow-up Questions")
+                    st.markdown("Based on your analysis, you might also want to explore:")
+                    
+                    for i, suggestion in enumerate(st.session_state.suggested_questions, 1):
+                        col1, col2 = st.columns([4, 1])
+                        with col1:
+                            st.write(f"{i}. {suggestion}")
+                        with col2:
+                            if st.button(f"Ask", key=f"followup_{i}"):
+                                st.session_state.original_question = suggestion
+                                st.session_state.refined_question = ""
+                                st.session_state.qa_answer = ""
+                                st.session_state.qa_data_result = None
+                                st.session_state.qa_code = ""
+                                st.session_state.qa_stage = 'refine'
+                                st.rerun()
+            
+            # Q&A History (always visible at bottom)
+            if 'qa_history' not in st.session_state:
+                st.session_state.qa_history = []
+            
+            # Add to history when answer is generated
+            if st.session_state.qa_stage == 'answer' and st.session_state.qa_answer:
+                current_qa = {
+                    'original': st.session_state.original_question,
+                    'refined': st.session_state.refined_question,
+                    'answer': st.session_state.qa_answer,
+                    'has_data': st.session_state.qa_data_result is not None
+                }
+                # Check if not already in history
+                if not any(qa['refined'] == current_qa['refined'] for qa in st.session_state.qa_history):
+                    st.session_state.qa_history.append(current_qa)
+            
+            # Display Q&A History
+            if st.session_state.qa_history:
+                st.markdown("---")
+                st.markdown("### 📜 Question History")
+                for i, qa in enumerate(reversed(st.session_state.qa_history[-5:]), 1):
+                    with st.expander(f"Q{i}: {qa['original'][:50]}..." + (" 📊" if qa.get('has_data') else "")):
+                        st.markdown("**Original:** " + qa['original'])
+                        if qa['original'] != qa['refined']:
+                            st.markdown("**Refined:** " + qa['refined'])
+                        st.markdown("**Answer:**")
+                        st.write(qa['answer'])
         
         # Tab 5: Generated Code
         with tab5:

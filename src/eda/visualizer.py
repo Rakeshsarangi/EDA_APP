@@ -3,14 +3,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 class Visualizer:
     def __init__(self, df: pd.DataFrame):
         self.df = df
         
-    def create_distribution_plots(self, numeric_cols: List[str]) -> Dict[str, go.Figure]:
-        """Create distribution plots for numeric columns."""
+    def create_distribution_plots(self, numeric_cols: List[str]) -> Dict[str, Tuple[go.Figure, Dict[str, str]]]:
+        """Create distribution plots for numeric columns with descriptions."""
         plots = {}
         
         for col in numeric_cols[:10]:  # Limit to 10 columns
@@ -36,14 +36,31 @@ class Visualizer:
                 height=400
             )
             
-            plots[col] = fig
+            # Add description and use case
+            info = {
+                'description': f"""
+                **Distribution Analysis for {col}:**
+                - **Histogram (Left):** Shows the frequency distribution of values, revealing patterns like normal distribution, skewness, or multimodality
+                - **Box Plot (Right):** Displays the five-number summary (min, Q1, median, Q3, max) and identifies outliers as individual points
+                """,
+                'use_case': """
+                **When to use this visualization:**
+                • Understand the spread and central tendency of numerical data
+                • Identify outliers and extreme values
+                • Check for data quality issues (unexpected distributions)
+                • Compare distributions before and after transformations
+                • Assess normality assumptions for statistical tests
+                """
+            }
+            
+            plots[col] = (fig, info)
             
         return plots
     
-    def create_correlation_heatmap(self, correlation_matrix: pd.DataFrame) -> go.Figure:
-        """Create correlation heatmap."""
+    def create_correlation_heatmap(self, correlation_matrix: pd.DataFrame) -> Tuple[go.Figure, Dict[str, str]]:
+        """Create correlation heatmap with description."""
         if correlation_matrix.empty:
-            return None
+            return None, None
             
         fig = go.Figure(data=go.Heatmap(
             z=correlation_matrix.values,
@@ -63,10 +80,29 @@ class Visualizer:
             width=800
         )
         
-        return fig
+        info = {
+            'description': """
+            **Correlation Matrix:**
+            Shows the linear relationship strength between all pairs of numeric variables.
+            - **Red colors:** Positive correlation (variables increase together)
+            - **Blue colors:** Negative correlation (one increases as other decreases)
+            - **White:** No linear correlation
+            - **Values range:** -1 (perfect negative) to +1 (perfect positive)
+            """,
+            'use_case': """
+            **When to use this visualization:**
+            • Identify multicollinearity before regression analysis
+            • Find redundant features for dimensionality reduction
+            • Discover relationships between variables
+            • Feature selection for machine learning models
+            • Validate hypotheses about variable relationships
+            """
+        }
+        
+        return fig, info
     
-    def create_categorical_plots(self, categorical_cols: List[str]) -> Dict[str, go.Figure]:
-        """Create plots for categorical columns."""
+    def create_categorical_plots(self, categorical_cols: List[str]) -> Dict[str, Tuple[go.Figure, Dict[str, str]]]:
+        """Create plots for categorical columns with descriptions."""
         plots = {}
         
         for col in categorical_cols[:10]:  # Limit to 10 columns
@@ -83,12 +119,35 @@ class Visualizer:
                 height=400
             )
             
-            plots[col] = fig
+            # Calculate some stats for the description
+            total_unique = self.df[col].nunique()
+            total_values = len(self.df[col])
+            most_common = value_counts.index[0] if len(value_counts) > 0 else 'N/A'
+            
+            info = {
+                'description': f"""
+                **Category Distribution for {col}:**
+                - **Total unique values:** {total_unique}
+                - **Most common value:** "{most_common}" ({value_counts.values[0] if len(value_counts) > 0 else 0} occurrences)
+                - **Coverage:** Top 15 categories shown (if applicable)
+                - Bar heights represent frequency of each category
+                """,
+                'use_case': """
+                **When to use this visualization:**
+                • Understand categorical variable distribution
+                • Identify data imbalance issues
+                • Find rare or dominant categories
+                • Data quality checks (unexpected categories)
+                • Inform encoding strategies for ML models
+                """
+            }
+            
+            plots[col] = (fig, info)
             
         return plots
     
-    def create_time_series_plots(self, datetime_cols: List[str], numeric_cols: List[str]) -> Dict[str, go.Figure]:
-        """Create time series plots."""
+    def create_time_series_plots(self, datetime_cols: List[str], numeric_cols: List[str]) -> Dict[str, Tuple[go.Figure, Dict[str, str]]]:
+        """Create time series plots with descriptions."""
         plots = {}
         
         for date_col in datetime_cols[:3]:  # Limit to 3 date columns
@@ -112,14 +171,32 @@ class Visualizer:
                     height=400
                 )
                 
-                plots[f'{date_col}_{num_col}'] = fig
+                info = {
+                    'description': f"""
+                    **Time Series Analysis: {num_col} over {date_col}:**
+                    - Shows how {num_col} changes over time
+                    - Each point represents a measurement at a specific time
+                    - Lines connect consecutive time points
+                    - Look for trends, seasonality, and anomalies
+                    """,
+                    'use_case': """
+                    **When to use this visualization:**
+                    • Track metrics over time (sales, temperature, stock prices)
+                    • Identify trends and seasonal patterns
+                    • Detect anomalies or change points
+                    • Forecast future values
+                    • Monitor system performance or KPIs
+                    """
+                }
+                
+                plots[f'{date_col}_{num_col}'] = (fig, info)
                 
         return plots
     
-    def create_scatter_matrix(self, numeric_cols: List[str], max_cols: int = 5) -> go.Figure:
-        """Create scatter matrix for numeric columns."""
+    def create_scatter_matrix(self, numeric_cols: List[str], max_cols: int = 5) -> Tuple[go.Figure, Dict[str, str]]:
+        """Create scatter matrix with description."""
         if len(numeric_cols) < 2:
-            return None
+            return None, None
             
         cols_to_use = numeric_cols[:min(max_cols, len(numeric_cols))]
         
@@ -131,21 +208,42 @@ class Visualizer:
         
         fig.update_layout(title='Scatter Matrix')
         
-        return fig
+        info = {
+            'description': f"""
+            **Scatter Matrix (Pair Plot):**
+            - Displays pairwise relationships between {len(cols_to_use)} numeric variables
+            - **Diagonal:** Distribution of each variable (histogram)
+            - **Off-diagonal:** Scatter plots showing relationships between pairs
+            - Useful for spotting linear/non-linear relationships and clusters
+            """,
+            'use_case': """
+            **When to use this visualization:**
+            • Explore relationships between multiple variables simultaneously
+            • Identify variable pairs with strong relationships
+            • Detect non-linear patterns
+            • Find clusters or groups in multivariate data
+            • Quick exploratory analysis of numeric features
+            """
+        }
+        
+        return fig, info
     
-    def create_missing_data_plot(self) -> go.Figure:
-        """Create missing data visualization."""
+    def create_missing_data_plot(self) -> Tuple[go.Figure, Dict[str, str]]:
+        """Create missing data visualization with description."""
         missing = self.df.isnull().sum()
         missing = missing[missing > 0].sort_values(ascending=False)
         
         if len(missing) == 0:
-            return None
+            return None, None
             
+        # Calculate percentages
+        missing_pct = (missing / len(self.df) * 100).round(1)
+        
         fig = go.Figure(data=[
             go.Bar(
                 x=missing.index,
                 y=missing.values,
-                text=missing.values,
+                text=[f'{val}<br>({pct}%)' for val, pct in zip(missing.values, missing_pct.values)],
                 textposition='auto'
             )
         ])
@@ -157,4 +255,26 @@ class Visualizer:
             height=400
         )
         
-        return fig
+        total_missing = missing.sum()
+        total_cells = len(self.df) * len(self.df.columns)
+        overall_pct = (total_missing / total_cells * 100)
+        
+        info = {
+            'description': f"""
+            **Missing Data Analysis:**
+            - **Total missing values:** {total_missing:,} ({overall_pct:.2f}% of all data)
+            - **Columns with missing data:** {len(missing)} out of {len(self.df.columns)}
+            - **Most missing:** {missing.index[0]} ({missing.values[0]:,} values, {missing_pct.values[0]}%)
+            - Bar heights show absolute count, labels show count and percentage
+            """,
+            'use_case': """
+            **When to use this visualization:**
+            • Assess data quality and completeness
+            • Decide on imputation strategies
+            • Identify patterns in missing data (MCAR, MAR, MNAR)
+            • Determine if columns should be dropped
+            • Plan data cleaning workflow
+            """
+        }
+        
+        return fig, info

@@ -5,7 +5,7 @@ load_dotenv()
 
 class Settings:
     # Ollama settings
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:20b")
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:20b-cloud")
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     
     # Security settings
