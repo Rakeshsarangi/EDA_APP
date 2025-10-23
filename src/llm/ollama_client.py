@@ -176,10 +176,115 @@ def analyze(df):
                 'data': None
             }
     
-    def answer_data_question_with_execution(self, question: str, df: pd.DataFrame, data_context: Dict) -> Tuple[str, Any]:
-        """Answer question by generating and executing analysis code."""
+    def classify_question(self, question: str, data_context: Dict) -> Dict[str, Any]:
+        """
+        Classify whether a question needs code execution or can be answered from context.
         
-        # First, generate the analysis code
+        Returns:
+            Dict with 'needs_execution' (bool), 'reasoning' (str), and 'direct_answer' (str, optional)
+        """
+        
+        prompt_template = """
+        Analyze this question about a dataset and determine if it requires code execution or can be answered directly from the dataset metadata.
+        
+        Dataset Context:
+        - Columns: {columns}
+        - Shape: {shape}
+        - Data Types: {dtypes}
+        - Numeric Columns: {numeric_columns}
+        - Categorical Columns: {categorical_columns}
+        - DateTime Columns: {date_columns}
+        
+        Question: {question}
+        
+        Classify the question into one of these categories:
+        
+        1. OBSERVATIONAL - Can be answered directly from metadata without code execution
+        Examples: "How many rows?", "What columns exist?", "What's the data type of X?"
+        
+        2. COMPUTATIONAL - Requires code execution on the actual data
+        Examples: "What's the average of X?", "Which customer has highest sales?", "Show top 10"
+        
+        Return a JSON object:
+        {{
+            "needs_execution": true/false,
+            "category": "OBSERVATIONAL" or "COMPUTATIONAL",
+            "reasoning": "Brief explanation of why",
+            "direct_answer": "If OBSERVATIONAL, provide the answer here using the context. If COMPUTATIONAL, set to null"
+        }}
+        
+        Return ONLY valid JSON, no other text.
+        """
+        
+        prompt = PromptTemplate(
+            input_variables=["columns", "shape", "dtypes", "numeric_columns", 
+                        "categorical_columns", "date_columns", "question"],
+            template=prompt_template
+        )
+        
+        chain = LLMChain(llm=self.llm, prompt=prompt)
+        
+        try:
+            columns = data_context.get('columns', [])
+            shape = data_context.get('shape', (0, 0))
+            dtypes = data_context.get('dtypes', {})
+            numeric_cols = data_context.get('numeric_columns', [])
+            categorical_cols = data_context.get('categorical_columns', [])
+            date_cols = data_context.get('datetime_columns', [])
+            
+            response = chain.run(
+                columns=", ".join(columns) if columns else "No columns",
+                shape=f"{shape[0]} rows × {shape[1]} columns",
+                dtypes=json.dumps(dtypes, indent=2) if dtypes else "{}",
+                numeric_columns=", ".join(numeric_cols) if numeric_cols else "None",
+                categorical_columns=", ".join(categorical_cols) if categorical_cols else "None",
+                date_columns=", ".join(date_cols) if date_cols else "None",
+                question=question
+            )
+            
+            # Clean and parse response
+            response = response.strip()
+            if response.startswith("```"):
+                response = response.split("```")[1]
+                if response.startswith("json"):
+                    response = response[4:]
+            if response.endswith("```"):
+                response = response.rsplit("```", 1)[0]
+            
+            result = json.loads(response)
+            return result
+            
+        except Exception as e:
+            print(f"Error classifying question: {e}")
+            # Default to execution if classification fails
+            return {
+                'needs_execution': True,
+                'category': 'COMPUTATIONAL',
+                'reasoning': 'Classification failed, defaulting to code execution',
+                'direct_answer': None
+            }
+
+    def answer_data_question_with_execution(self, question: str, df: pd.DataFrame, 
+                                         data_context: Dict) -> Tuple[str, Any, str]:
+        """
+        Answer question - either directly from context or by executing code.
+        
+        Returns:
+            Tuple of (answer_text, data_result, code_used)
+        """
+        
+        # First, classify the question
+        classification = self.classify_question(question, data_context)
+        
+        # If it's observational and we have a direct answer, return it
+        if not classification['needs_execution'] and classification['direct_answer']:
+            answer_text = f"**{classification['direct_answer']}**\n\n"
+            answer_text += f"_{classification['reasoning']}_"
+            
+            return answer_text, None, "# No code execution needed - answered from dataset metadata"
+        
+        # Otherwise, proceed with code generation and execution
+        # Generate the analysis code
         code = self.generate_analysis_code_for_question(question, data_context)
         
         # Execute the code
@@ -188,6 +293,9 @@ def analyze(df):
         # Format the answer
         answer_text = result.get('answer', 'Unable to compute answer.')
         data_result = result.get('data', None)
+        
+        # Add classification reasoning
+        answer_text = f"**Analysis Type:** {classification['category']}\n\n{answer_text}"
         
         # If there's tabular data, format it nicely
         if data_result is not None:
