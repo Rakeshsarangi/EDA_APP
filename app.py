@@ -10,6 +10,7 @@ from src.utils.code_executor import SafeCodeExecutor, VisualizationOptimizer
 import plotly.graph_objects as go
 from typing import Dict, Any
 import time
+from datetime import datetime
 
 # Page configuration
 st.set_page_config(
@@ -459,23 +460,15 @@ def main():
         # Tab 4: Q&A
         with tab4:
             st.header("Ask Questions About Your Data")
-            st.markdown("Ask any question about your data. I'll analyze the entire dataset and provide accurate answers.")
+            st.markdown("Have a conversation with your data. Ask questions and follow up naturally!")
             
-            # Initialize session state for Q&A workflow
-            if 'qa_stage' not in st.session_state:
-                st.session_state.qa_stage = 'input'  # 'input', 'refine', 'answer'
-            if 'original_question' not in st.session_state:
-                st.session_state.original_question = ""
-            if 'refined_question' not in st.session_state:
-                st.session_state.refined_question = ""
-            if 'qa_answer' not in st.session_state:
-                st.session_state.qa_answer = ""
-            if 'qa_data_result' not in st.session_state:
-                st.session_state.qa_data_result = None
-            if 'qa_code' not in st.session_state:
-                st.session_state.qa_code = ""
-            if 'suggested_questions' not in st.session_state:
-                st.session_state.suggested_questions = []
+            # Initialize session state for conversation
+            if 'conversation_history' not in st.session_state:
+                st.session_state.conversation_history = []
+            if 'current_input' not in st.session_state:
+                st.session_state.current_input = ""
+            if 'processing' not in st.session_state:
+                st.session_state.processing = False
             
             # Prepare data context
             context = {
@@ -487,311 +480,220 @@ def main():
                 'datetime_columns': list(df.select_dtypes(include=['datetime64']).columns)
             }
             
-            # Stage 1: Input Question
-            if st.session_state.qa_stage == 'input':
-                # Question input area
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    question = st.text_input(
-                        "Enter your question:",
-                        placeholder="e.g., Which customer has the highest total sales?",
-                        key="user_question_input"
-                    )
-                with col2:
-                    analyze_btn = st.button("🔍 Analyze Question", type="primary", disabled=not question)
+            # Display conversation history
+            if st.session_state.conversation_history:
+                st.markdown("### 💬 Conversation")
                 
-                # Show example questions based on actual columns
-                with st.expander("📝 Example Questions for Your Data"):
-                    example_questions = []
-                    
-                    # Generate examples based on actual columns
-                    if context['numeric_columns']:
-                        num_col = context['numeric_columns'][0]
-                        example_questions.append(f"What is the average {num_col}?")
-                        example_questions.append(f"Show me the top 10 records by {num_col}")
-                        if len(context['numeric_columns']) > 1:
-                            num_col2 = context['numeric_columns'][1]
-                            example_questions.append(f"What is the correlation between {num_col} and {num_col2}?")
-                    
-                    if context['categorical_columns']:
-                        cat_col = context['categorical_columns'][0]
-                        example_questions.append(f"What are the most common values in {cat_col}?")
-                        if context['numeric_columns']:
-                            num_col = context['numeric_columns'][0]
-                            example_questions.append(f"Which {cat_col} has the highest average {num_col}?")
-                    
-                    if context['datetime_columns']:
-                        date_col = context['datetime_columns'][0]
-                        if context['numeric_columns']:
-                            num_col = context['numeric_columns'][0]
-                            example_questions.append(f"What is the trend of {num_col} over {date_col}?")
-                    
-                    # Generic examples
-                    example_questions.extend([
-                        "Which rows have missing values?",
-                        "What are the statistical outliers in the data?",
-                        "Show me a summary of the dataset"
-                    ])
-                    
-                    for eq in example_questions[:8]:
-                        st.write(f"• {eq}")
+                # Create a container for the conversation
+                chat_container = st.container()
                 
-                # Show data context summary
-                with st.expander("📊 Your Dataset Overview"):
-                    col1, col2, col3 = st.columns(3)
+                with chat_container:
+                    for i, entry in enumerate(st.session_state.conversation_history):
+                        # User message
+                        with st.chat_message("user"):
+                            st.markdown(f"**{entry['original_question']}**")
+                            if entry['original_question'] != entry['refined_question']:
+                                with st.expander("🔍 Refined Question"):
+                                    st.markdown(entry['refined_question'])
+                        
+                        # Assistant response
+                        with st.chat_message("assistant"):
+                            st.markdown(entry['answer'])
+                            
+                            # Display data results if available
+                            if entry.get('data_result') is not None:
+                                data_result = entry['data_result']
+                                
+                                if isinstance(data_result, pd.DataFrame) and len(data_result) > 0:
+                                    st.dataframe(data_result, use_container_width=True, hide_index=False)
+                                    
+                                    # Download button for this result
+                                    csv = data_result.to_csv(index=False)
+                                    st.download_button(
+                                        label="📥 Download Results",
+                                        data=csv,
+                                        file_name=f"results_{i+1}.csv",
+                                        mime="text/csv",
+                                        key=f"download_result_{i}"
+                                    )
+                                elif isinstance(data_result, dict):
+                                    st.json(data_result)
+                                elif isinstance(data_result, list):
+                                    for item in data_result:
+                                        st.write(f"• {item}")
+                            
+                            # Show code in expander
+                            if entry.get('code'):
+                                with st.expander("💻 View Analysis Code"):
+                                    st.code(entry['code'], language='python')
+                                    st.download_button(
+                                        label="📥 Download Code",
+                                        data=entry['code'],
+                                        file_name=f"analysis_{i+1}.py",
+                                        mime="text/plain",
+                                        key=f"download_code_{i}"
+                                    )
+                        
+                        st.divider()
+            
+            else:
+                # Welcome message
+                st.info("👋 Start a conversation by asking a question about your data below!")
+                
+                # Show helpful examples
+                with st.expander("📝 Example Questions"):
+                    col1, col2 = st.columns(2)
+                    
                     with col1:
-                        st.markdown(f"**Shape:** {context['shape'][0]:,} rows × {context['shape'][1]} columns")
-                        st.markdown("**Numeric Columns:**")
-                        for col in context['numeric_columns'][:5]:
-                            st.write(f"• {col}")
-                        if len(context['numeric_columns']) > 5:
-                            st.write(f"... and {len(context['numeric_columns'])-5} more")
-                    with col2:
-                        st.markdown("**Categorical Columns:**")
+                        st.markdown("**Getting Started:**")
+                        if context['numeric_columns']:
+                            st.write(f"• What is the average {context['numeric_columns'][0]}?")
+                            st.write(f"• Show me the distribution of {context['numeric_columns'][0]}")
                         if context['categorical_columns']:
-                            for col in context['categorical_columns'][:5]:
-                                st.write(f"• {col}")
-                            if len(context['categorical_columns']) > 5:
-                                st.write(f"... and {len(context['categorical_columns'])-5} more")
-                        else:
-                            st.write("None")
-                    with col3:
-                        st.markdown("**DateTime Columns:**")
-                        if context['datetime_columns']:
-                            for col in context['datetime_columns'][:5]:
-                                st.write(f"• {col}")
-                        else:
-                            st.write("None")
-                
-                if analyze_btn and question:
-                    st.session_state.original_question = question
-                    st.session_state.qa_stage = 'refine'
+                            st.write(f"• What are the most common {context['categorical_columns'][0]} values?")
+                        st.write("• How many rows have missing values?")
+                    
+                    with col2:
+                        st.markdown("**Follow-up Examples:**")
+                        st.write("• Can you show me the top 10?")
+                        st.write("• What about for category X?")
+                        st.write("• How does this compare to...?")
+                        st.write("• Show me more details")
+            
+            # Input area at the bottom (always visible)
+            st.markdown("---")
+            
+            # Question input with two columns
+            col1, col2 = st.columns([5, 1])
+            
+            with col1:
+                user_question = st.text_input(
+                    "Ask a question:",
+                    placeholder="e.g., Which customer has the highest sales?",
+                    key="question_input",
+                    label_visibility="collapsed"
+                )
+            
+            with col2:
+                ask_button = st.button("🚀 Ask", type="primary", disabled=not user_question, use_container_width=True)
+            
+            # Action buttons row
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if st.button("🔄 New Conversation", use_container_width=True):
+                    st.session_state.conversation_history = []
+                    st.session_state.current_input = ""
                     st.rerun()
             
-            # Stage 2: Refine Question
-            elif st.session_state.qa_stage == 'refine':
-                st.subheader("🔄 Question Refinement")
-                
-                # Show original question
-                st.markdown("**Your Original Question:**")
-                st.info(st.session_state.original_question)
-                
-                # Generate refined question if not already done
-                if not st.session_state.refined_question:
-                    with st.spinner("Analyzing and refining your question..."):
-                        refined = st.session_state.ollama_client.refine_user_question(
-                            st.session_state.original_question,
-                            context
-                        )
-                        st.session_state.refined_question = refined
-                        
-                        # Generate suggested questions
-                        suggestions = st.session_state.ollama_client.suggest_related_questions(
-                            st.session_state.original_question,
-                            context
-                        )
-                        st.session_state.suggested_questions = suggestions
-                
-                # Show refined question with edit capability
-                st.markdown("**Refined Question for Better Analysis:**")
-                refined_question_edit = st.text_area(
-                    "You can edit this refined question if needed:",
-                    value=st.session_state.refined_question,
-                    height=100,
-                    key="refined_question_edit"
-                )
-                
-                # Show what changed
-                if st.session_state.original_question.lower() != st.session_state.refined_question.lower():
-                    with st.expander("🔍 What was refined?"):
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.markdown("**Original:**")
-                            st.write(st.session_state.original_question)
-                        with col2:
-                            st.markdown("**Refined:**")
-                            st.write(st.session_state.refined_question)
-                        
-                        st.info("""
-                        The question was refined to:
-                        - Include specific column names from your dataset
-                        - Clarify the type of analysis requested
-                        - Make the intent more precise for accurate computation
-                        """)
-                
-                # Action buttons
-                col1, col2, col3 = st.columns([1, 1, 1])
-                with col1:
-                    if st.button("✅ Proceed with Analysis", type="primary"):
-                        st.session_state.refined_question = refined_question_edit
-                        st.session_state.qa_stage = 'answer'
-                        st.rerun()
-                with col2:
-                    if st.button("📝 Use Original Question"):
-                        st.session_state.refined_question = st.session_state.original_question
-                        st.session_state.qa_stage = 'answer'
-                        st.rerun()
-                with col3:
-                    if st.button("🔙 Ask Different Question"):
-                        st.session_state.qa_stage = 'input'
-                        st.session_state.original_question = ""
-                        st.session_state.refined_question = ""
-                        st.session_state.suggested_questions = []
-                        st.rerun()
-                
-                # Show suggested related questions
-                if st.session_state.suggested_questions:
-                    st.markdown("---")
-                    st.markdown("### 💡 Related Questions You Might Want to Ask:")
-                    for i, suggestion in enumerate(st.session_state.suggested_questions, 1):
-                        col1, col2 = st.columns([4, 1])
-                        with col1:
-                            st.write(f"{i}. {suggestion}")
-                        with col2:
-                            if st.button(f"Ask this", key=f"suggest_{i}"):
-                                st.session_state.original_question = suggestion
-                                st.session_state.refined_question = ""
-                                st.session_state.qa_stage = 'refine'
-                                st.rerun()
-            
-            # Stage 3: Show Answer with Actual Data Analysis
-            elif st.session_state.qa_stage == 'answer':
-                # Display the question being answered
-                st.markdown("**Analyzing Question:**")
-                st.success(st.session_state.refined_question)
-                
-                # Generate answer if not already done
-                if not st.session_state.qa_answer:
-                    with st.spinner("🔬 Analyzing your entire dataset..."):
-                        # Use the new execution method
-                        answer, data_result, code = st.session_state.ollama_client.answer_data_question_with_execution(
-                            st.session_state.refined_question,
-                            df,  # Pass the actual DataFrame
-                            context
-                        )
-                        st.session_state.qa_answer = answer
-                        st.session_state.qa_data_result = data_result
-                        st.session_state.qa_code = code
-                
-                # Display answer
-                st.markdown("### 📊 Answer")
-                st.write(st.session_state.qa_answer)
-                
-                # Display data results if available
-                if st.session_state.qa_data_result is not None:
-                    st.markdown("---")
-                    if isinstance(st.session_state.qa_data_result, pd.DataFrame):
-                        st.markdown("#### 📋 Detailed Results:")
-                        # Display DataFrame with formatting
-                        st.dataframe(
-                            st.session_state.qa_data_result,
-                            use_container_width=True,
-                            hide_index=False
-                        )
-                        
-                        # Offer to download results
-                        csv = st.session_state.qa_data_result.to_csv(index=False)
-                        st.download_button(
-                            label="📥 Download Results as CSV",
-                            data=csv,
-                            file_name="query_results.csv",
-                            mime="text/csv"
-                        )
-                        
-                    elif isinstance(st.session_state.qa_data_result, dict):
-                        st.markdown("#### 📋 Results:")
-                        st.json(st.session_state.qa_data_result)
-                        
-                    elif isinstance(st.session_state.qa_data_result, list):
-                        st.markdown("#### 📋 Results:")
-                        for item in st.session_state.qa_data_result:
-                            st.write(f"• {item}")
-                
-                # Show the analysis code
-                with st.expander("💻 View Analysis Code"):
-                    st.markdown("This code was generated and executed to answer your question:")
-                    st.code(st.session_state.qa_code, language='python')
+            with col2:
+                if st.button("💾 Export Chat", disabled=not st.session_state.conversation_history, use_container_width=True):
+                    # Export conversation as markdown
+                    export_text = "# Data Analysis Conversation\n\n"
+                    export_text += f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                     
-                    # Download button for code
+                    for i, entry in enumerate(st.session_state.conversation_history, 1):
+                        export_text += f"## Question {i}\n\n"
+                        export_text += f"**User:** {entry['original_question']}\n\n"
+                        if entry['original_question'] != entry['refined_question']:
+                            export_text += f"**Refined:** {entry['refined_question']}\n\n"
+                        export_text += f"**Answer:** {entry['answer']}\n\n"
+                        if entry.get('code'):
+                            export_text += f"```python\n{entry['code']}\n```\n\n"
+                        export_text += "---\n\n"
+                    
                     st.download_button(
-                        label="📥 Download Analysis Code",
-                        data=st.session_state.qa_code,
-                        file_name="data_analysis.py",
-                        mime="text/plain"
+                        label="📥 Download Conversation",
+                        data=export_text,
+                        file_name="data_conversation.md",
+                        mime="text/markdown",
+                        key="export_conversation"
+                    )
+            
+            with col3:
+                if st.button("📊 Dataset Info", use_container_width=True):
+                    with st.expander("📊 Dataset Overview", expanded=True):
+                        info_col1, info_col2 = st.columns(2)
+                        with info_col1:
+                            st.markdown(f"**Shape:** {context['shape'][0]:,} rows × {context['shape'][1]} columns")
+                            st.markdown(f"**Numeric Columns:** {len(context['numeric_columns'])}")
+                            st.markdown(f"**Categorical Columns:** {len(context['categorical_columns'])}")
+                        with info_col2:
+                            st.markdown("**Sample Columns:**")
+                            for col in list(df.columns)[:5]:
+                                st.write(f"• {col}")
+                            if len(df.columns) > 5:
+                                st.write(f"... and {len(df.columns)-5} more")
+            
+            with col4:
+                if st.button("💡 Suggestions", disabled=not st.session_state.conversation_history, use_container_width=True):
+                    # Generate suggestions based on last question
+                    if st.session_state.conversation_history:
+                        last_question = st.session_state.conversation_history[-1]['original_question']
+                        
+                        with st.spinner("Generating suggestions..."):
+                            suggestions = st.session_state.ollama_client.suggest_related_questions(
+                                last_question,
+                                context
+                            )
+                        
+                        if suggestions:
+                            st.markdown("### 💡 Suggested Follow-up Questions:")
+                            for i, suggestion in enumerate(suggestions, 1):
+                                if st.button(f"{i}. {suggestion}", key=f"suggestion_{i}", use_container_width=True):
+                                    st.session_state.current_input = suggestion
+                                    st.rerun()
+            
+            # Process question when button is clicked
+            if ask_button and user_question and not st.session_state.processing:
+                st.session_state.processing = True
+                
+                with st.spinner("🤔 Analyzing your question..."):
+                    # Step 1: Refine the question
+                    refined_question = st.session_state.ollama_client.refine_user_question(
+                        user_question,
+                        context
                     )
                 
-                # Feedback and actions
-                st.markdown("---")
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    if st.button("👍 Helpful"):
-                        st.success("Great! Feel free to ask more questions.")
-                with col2:
-                    if st.button("👎 Not Helpful"):
-                        st.info("Try rephrasing your question or be more specific about what you're looking for.")
-                with col3:
-                    if st.button("🔄 Refine Question"):
-                        st.session_state.qa_stage = 'refine'
-                        st.rerun()
-                with col4:
-                    if st.button("❓ New Question"):
-                        # Reset state
-                        st.session_state.qa_stage = 'input'
-                        st.session_state.original_question = ""
-                        st.session_state.refined_question = ""
-                        st.session_state.qa_answer = ""
-                        st.session_state.qa_data_result = None
-                        st.session_state.qa_code = ""
-                        st.session_state.suggested_questions = []
-                        st.rerun()
+                with st.spinner("🔬 Analyzing your data..."):
+                    # Step 2: Generate and execute analysis
+                    answer, data_result, code = st.session_state.ollama_client.answer_data_question_with_execution(
+                        refined_question,
+                        df,
+                        context
+                    )
                 
-                # Show related questions for follow-up
-                if st.session_state.suggested_questions:
-                    st.markdown("---")
-                    st.markdown("### 🔗 Follow-up Questions")
-                    st.markdown("Based on your analysis, you might also want to explore:")
-                    
-                    for i, suggestion in enumerate(st.session_state.suggested_questions, 1):
-                        col1, col2 = st.columns([4, 1])
-                        with col1:
-                            st.write(f"{i}. {suggestion}")
-                        with col2:
-                            if st.button(f"Ask", key=f"followup_{i}"):
-                                st.session_state.original_question = suggestion
-                                st.session_state.refined_question = ""
-                                st.session_state.qa_answer = ""
-                                st.session_state.qa_data_result = None
-                                st.session_state.qa_code = ""
-                                st.session_state.qa_stage = 'refine'
-                                st.rerun()
+                # Add to conversation history
+                st.session_state.conversation_history.append({
+                    'original_question': user_question,
+                    'refined_question': refined_question,
+                    'answer': answer,
+                    'data_result': data_result,
+                    'code': code,
+                    'timestamp': datetime.now()
+                })
+                
+                st.session_state.processing = False
+                st.rerun()
             
-            # Q&A History (always visible at bottom)
-            if 'qa_history' not in st.session_state:
-                st.session_state.qa_history = []
-            
-            # Add to history when answer is generated
-            if st.session_state.qa_stage == 'answer' and st.session_state.qa_answer:
-                current_qa = {
-                    'original': st.session_state.original_question,
-                    'refined': st.session_state.refined_question,
-                    'answer': st.session_state.qa_answer,
-                    'has_data': st.session_state.qa_data_result is not None
-                }
-                # Check if not already in history
-                if not any(qa['refined'] == current_qa['refined'] for qa in st.session_state.qa_history):
-                    st.session_state.qa_history.append(current_qa)
-            
-            # Display Q&A History
-            if st.session_state.qa_history:
+            # Show statistics at the very bottom
+            if st.session_state.conversation_history:
                 st.markdown("---")
-                st.markdown("### 📜 Question History")
-                for i, qa in enumerate(reversed(st.session_state.qa_history[-5:]), 1):
-                    with st.expander(f"Q{i}: {qa['original'][:50]}..." + (" 📊" if qa.get('has_data') else "")):
-                        st.markdown("**Original:** " + qa['original'])
-                        if qa['original'] != qa['refined']:
-                            st.markdown("**Refined:** " + qa['refined'])
-                        st.markdown("**Answer:**")
-                        st.write(qa['answer'])
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                
+                with stat_col1:
+                    st.metric("Questions Asked", len(st.session_state.conversation_history))
+                
+                with stat_col2:
+                    questions_with_data = sum(1 for entry in st.session_state.conversation_history 
+                                            if entry.get('data_result') is not None)
+                    st.metric("Results with Data", questions_with_data)
+                
+                with stat_col3:
+                    if st.session_state.conversation_history:
+                        duration = (st.session_state.conversation_history[-1]['timestamp'] - 
+                                st.session_state.conversation_history[0]['timestamp'])
+                        st.metric("Session Duration", f"{int(duration.total_seconds() / 60)} min")
         
         # Tab 5: Generated Code
         with tab5:
